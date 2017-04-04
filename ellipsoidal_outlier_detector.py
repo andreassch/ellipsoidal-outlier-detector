@@ -407,16 +407,16 @@ def get_total_partition(xarray, alpha=0.5, EllipsoidSolver=EllipsoidSolver):
     
     in
     --
-    xarray    - array shaped (M, d) for M samples of d-dimensional vecs
+    xarray      - array shaped (M, d) for M samples of d-dimensional vecs
+    alpha       - stop partition when xin is smaller than (M*alpha, d)
 
     out
     ---
     xin_list    - list of partitions 
     xout_list   - 
-    volumes     - array of ellipsoid volumes
-    A_arrs      - A_arrs define the covarience of ellipse
-    b_vecs      - b_vecs define the center of the ellipse
-    Fe          - The interface to CVXOPT
+    vols        - array of ellipsoid volumes
+    As          - A_arrs define the covarience of ellipse
+    bs          - b_vecs define the center of the ellipse
     
     """
     
