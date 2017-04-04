@@ -15,7 +15,7 @@ import scipy.linalg as la
 # install cvxopt if needed
 # if you have anaconda: "conda install cvxopt"
 from cvxopt import matrix, solvers
-#solvers.options['show_progress'] = False
+solvers.options['show_progress'] = False
 from cvxopt import blas, lapack, sqrt, mul, cos, sin, log
 
 ## Constants
@@ -23,8 +23,13 @@ EPS = sp.finfo(float).eps
 
 
 
-# Functions for the
 
+
+
+    
+
+
+# Class definition for the El
 class EllipsoidSolver(object):
     """
     Class for constructing a function to pass to the convex 
@@ -80,12 +85,8 @@ class EllipsoidSolver(object):
         self.A0 = self.get_A(a0)
         self.b0 = self.get_b(a0)
         
-
-        
-
-
-        
-    def __call__(self, a=None, z=None):#, a0=a0, x=samples, B=B, D=D):
+    # Make the instances callable to interface with CVXOPT
+    def __call__(self, a=None, z=None):
         """
         Loewner-John ellipsoid
         
@@ -358,15 +359,178 @@ class EllipsoidSolver(object):
 
         return out
         
+# Functions for easy interface to outlier computing outliers easily
+# 
+def get_outliers(xarray, avec0=None, EllipsoidSolver=EllipsoidSolver):
+    """
+    Compute the outliers and split them off
+  
+    Compute outliers in sequance for all points.
+    
+    in
+    --
+    xarray   - array shaped (M, d) for M samples of d-dimensional vecs
+    avec0    - Optional initial guess for the ellipse state vector 
+
+
+    out
+    ---
+    xin      - samples inside the minimum ellipse 
+    xout     - samples on the boundary of the ellipse
+    vol      - constand proportional to the volume (1.0 / det(A))
+    A        - Array defining the ellipse 
+    b        - Vector defining the offset of ellipse 
+    avec     - state vector for minimum volume ellipse 
+    
+    
+    * Note *
+    Use the kwarg avec0 to initialize the ellipse optimization.  
+
+
+    """
+    
+    # Define a solver for these filter vectors
+    esolver = EllipsoidSolver(xarray, a0=avec0)
+    
+    # Get the min. vol. ellipse containing all points 
+    avec, vol, A, b = esolver.get_optimal_ellipse()
+    
+    # Plit the xarray into interior and boundary points
+    xin, xout = esolver.get_xinxout(A, b)
+    
+    return xin, xout, vol, A, b, avec
         
 
+def get_total_partition(xarray, alpha=0.5, EllipsoidSolver=EllipsoidSolver):
+    """
+    Compute outliers in sequance for all points.
+    
+    in
+    --
+    xarray    - array shaped (M, d) for M samples of d-dimensional vecs
 
+    out
+    ---
+    xin_list    - list of partitions 
+    xout_list   - 
+    volumes     - array of ellipsoid volumes
+    A_arrs      - A_arrs define the covarience of ellipse
+    b_vecs      - b_vecs define the center of the ellipse
+    Fe          - The interface to CVXOPT
+    
+    """
+    
+    # Get problem dimensions
+    M, d = xarray.shape[:]
+    
+    
+    # Initialize output
+    xout_list = []
+    xin_list = []
+    vols = sp.zeros((M,))
+    As = sp.zeros((M, d, d))
+    bs = sp.zeros((M, d))
+    
+    # Initialize 
+    avec0 = None
+    xin = xarray
+    
+    
+    # Loop until the set of points has been partitioned
+    for i in range(M):
+        
+        # Get the next ellipse
+        xin, xout, vol, A, b, avec0 = get_outliers(xin, avec0=avec0)
+    
+        # Store data for output
+        xout_list.append(xout)
+        xin_list.append(xin)
+        vols[i] = vol
+        As[i, :, :] = A
+        bs[i, :] = b
+        
+        if xin.shape[0] < M * alpha:
+            ibound = i + 1            
+            break
+    
+        
+    # Prepare output
+    vols = vols[:ibound]
+    As = As[:ibound, :, :]
+    bs = bs[:ibound, :]
+    
+    return xin_list, xout_list, vols, As, bs
+
+
+
+    
+    
 
 if __name__ == "__main__":
+
+
+
+
+    
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
 
 
+
+
+
+
+
+
+
+
+
+    
+    ## Make a plot for the case where ndim is 3
+    def plot_xinxout_3d(xin, xout, A, b):
+        """
+        Plotting routine for the case where the number of filter 
+        parameters is 3.  
+        
+        """
+
+
+        Ainv = la.inv(A)
+    
+        # Make a 3D figure
+        fig = plt.figure()
+        ax = fig.add_subplot(1,1,1, projection='3d')
+        ax.scatter(xin[:,0], xin[:,1], xin[:,2], marker='.')
+        ax.scatter(xout[:,0], xout[:,1], xout[:,2], marker='o', c='r')
+
+    
+        ## Get points on a sphere
+        thetas = sp.linspace(100*EPS, (1.0-100*EPS) * sp.pi, 20)
+        phis = sp.linspace(0.0, 2*sp.pi, 20)
+        TT, PP = sp.meshgrid(thetas, phis, indexing='ij')
+
+        xx = sp.cos(PP) * sp.sin(TT)
+        yy = sp.sin(PP) * sp.sin(TT)
+        zz = sp.cos(TT)
+
+
+        Ainv_xx = Ainv[:,0, None, None] * (xx - b[None, None, 0])
+        Ainv_yy = Ainv[:,1, None, None] * (yy - b[None, None, 1])
+        Ainv_zz = Ainv[:,2, None, None] * (zz - b[None, None, 2])
+
+        xyz_ellipse = Ainv_xx + Ainv_yy + Ainv_zz
+        xe = xyz_ellipse[0]
+        ye = xyz_ellipse[1]
+        ze = xyz_ellipse[2]
+
+    
+        ax.plot_wireframe(xe, ye, ze, linewidth=0.5)
+    
+    
+        return fig
+
+
+    
     # Generate random samples for testing the algorithm
     Ndim = 3
     Nsamples = 1000
@@ -376,12 +540,21 @@ if __name__ == "__main__":
     mean = np.array(Ndim * [5.0,])
     cov = sp.eye(Ndim) + 5.0
 
-    samples = random.multivariate_normal(mean, cov, Nsamples)
-    samples[:50] = random.laplace(5, scale =.0000001, size=(50, mean.size))
+    xarray = random.multivariate_normal(mean, cov, Nsamples)
+    xarray[:50] = random.laplace(5, scale =10.0000001, size=(50, mean.size))
 
 
-    # Make a 3D figure
-    fig = plt.figure(0)
-    fig.clear()
-    ax = fig.add_subplot(1,1,1, projection='3d')
-    ax.scatter(samples[:,0], samples[:,1], samples[:,2], marker='.')
+    # Compute the first partition
+    xin, xout, vol, A, b, avec = get_outliers(xarray)
+    
+    fig = plot_xinxout_3d(xin, xout, A, b)
+    fig.show()
+
+
+    
+    # # Make a 3D figure
+    # fig = plt.figure(0)
+    # fig.clear()
+    # ax = fig.add_subplot(1,1,1, projection='3d')
+    # ax.scatter(xarray[:,0], xarray[:,1], xarray[:,2], marker='.')
+    # fig.show()
