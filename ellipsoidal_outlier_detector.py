@@ -22,13 +22,6 @@ from cvxopt import blas, lapack, sqrt, mul, cos, sin, log
 EPS = sp.finfo(float).eps
 
 
-
-
-
-
-    
-
-
 # Class definition for the El
 class EllipsoidSolver(object):
     """
@@ -171,6 +164,17 @@ class EllipsoidSolver(object):
     def get_xinxout(self,A, b, EPS=EPS):
         """
         Split the filter array into interior an boundary points. 
+
+        in 
+        --
+        A     - Ellipse array 
+        b     - Ellipse offset vector
+        
+        out 
+        ---
+        xin   - Part of xarray that is in ellipse
+        xout  - Part of xarray that is outside the ellipse
+        Iin   - Bolean index array for points in ellipse
         """
         x = self.xarray
         v = sp.dot(A, x.T) + b[:, None]
@@ -178,7 +182,8 @@ class EllipsoidSolver(object):
         Iout = (v**2).sum(0)-1 >= - 10 * sp.sqrt(EPS)
         xin = x[Iin, :]
         xout = x[Iout, :]
-        return xin, xout
+
+        return xin, xout, Iin 
 
     
     ## Get arrays for parameterizing the ellipse
@@ -360,7 +365,9 @@ class EllipsoidSolver(object):
         return out
         
 # Functions for easy interface to outlier computing outliers easily
-# 
+#
+
+## Do a single outlier detection step
 def get_outliers(xarray, avec0=None, EllipsoidSolver=EllipsoidSolver):
     """
     Compute the outliers and split them off
@@ -377,6 +384,7 @@ def get_outliers(xarray, avec0=None, EllipsoidSolver=EllipsoidSolver):
     ---
     xin      - samples inside the minimum ellipse 
     xout     - samples on the boundary of the ellipse
+    bol_Iin  - index of samples i: 0 <= i < M 
     vol      - constand proportional to the volume (1.0 / det(A))
     A        - Array defining the ellipse 
     b        - Vector defining the offset of ellipse 
@@ -395,15 +403,17 @@ def get_outliers(xarray, avec0=None, EllipsoidSolver=EllipsoidSolver):
     # Get the min. vol. ellipse containing all points 
     avec, vol, A, b = esolver.get_optimal_ellipse()
     
-    # Plit the xarray into interior and boundary points
-    xin, xout = esolver.get_xinxout(A, b)
-    
-    return xin, xout, vol, A, b, avec
-        
+    # Split the xarray into interior and boundary points
+    xin, xout, bool_Iin = esolver.get_xinxout(A, b)
 
+    return xin, xout, bool_Iin, vol, A, b, avec
+
+
+## Do a repeated outlier detection until a fraction of points are removed 
 def get_total_partition(xarray, alpha=0.5, EllipsoidSolver=EllipsoidSolver):
     """
     Compute outliers in sequance for all points.
+    
     
     in
     --
@@ -412,21 +422,34 @@ def get_total_partition(xarray, alpha=0.5, EllipsoidSolver=EllipsoidSolver):
 
     out
     ---
-    xin_list    - list of partitions 
-    xout_list   - 
-    vols        - array of ellipsoid volumes
-    As          - A_arrs define the covarience of ellipse
-    bs          - b_vecs define the center of the ellipse
+    bool_Iin_list    - list of bool index arrays for all inliers each is ~(M,)
+    bool_Iout_list   - list of bool index arrays for the latest outliers ~(M,)
+    vols             - array of ellipsoid volumes
+    As               - A_arrs define the covarience of ellipse
+    bs               - b_vecs define the center of the ellipse
     
+
+    Usage
+    ------
+    The boolean arrays that are returned are used as follows:
+
+      xin = xarray[bool_Iin, :]
+      xout= xarray[bool_Iout, :]
+
+    This xout contains the outliers for the latest step only. 
+
     """
     
     # Get problem dimensions
     M, d = xarray.shape[:]
-    
-    
+
+    # Make a index array to keep track of index_in
+    Iin = sp.arange(M)
+    bool_Iin = sp.ones((M,), dtype=bool)
+
     # Initialize output
-    xout_list = []
-    xin_list = []
+    bool_Iin_list = []
+    bool_Iout_list = []
     vols = sp.zeros((M,))
     As = sp.zeros((M, d, d))
     bs = sp.zeros((M, d))
@@ -435,20 +458,31 @@ def get_total_partition(xarray, alpha=0.5, EllipsoidSolver=EllipsoidSolver):
     avec0 = None
     xin = xarray
     
-    
     # Loop until the set of points has been partitioned
     for i in range(M):
         
         # Get the next ellipse
-        xin, xout, vol, A, b, avec0 = get_outliers(xin, avec0=avec0)
-    
-        # Store data for output
-        xout_list.append(xout)
-        xin_list.append(xin)
+        xin, xout, bool_Iin_next, vol, A, b, avec0 = get_outliers(xin, avec0=avec0)
+
+
+        ## Update the index arrays Iin and bool_Iin
+        Iout_next = Iin[~bool_Iin_next]
+        bool_Iin[Iout_next] = False
+        Iin = Iin[bool_Iin_next]
+
+        ## Define a bool array indicated most recent outliers
+        bool_Iout_next = sp.zeros(M, dtype=bool)
+        bool_Iout_next[Iout_next] = True
+
+        
+        # Store output
+        bool_Iin_list.append(bool_Iin.copy())
+        bool_Iout_list.append(bool_Iout_next)
         vols[i] = vol
         As[i, :, :] = A
         bs[i, :] = b
-        
+
+                
         if xin.shape[0] < M * alpha:
             ibound = i + 1            
             break
@@ -459,33 +493,21 @@ def get_total_partition(xarray, alpha=0.5, EllipsoidSolver=EllipsoidSolver):
     As = As[:ibound, :, :]
     bs = bs[:ibound, :]
     
-    return xin_list, xout_list, vols, As, bs
+    return bool_Iin_list, bool_Iout_list, vols, As, bs
 
 
 
     
-    
 
+
+# Main program
 if __name__ == "__main__":
 
 
-
-
-    
+    # Imports for plotting the scatter plots and outliers
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
 
-
-
-
-
-
-
-
-
-
-
-    
     ## Make a plot for the case where ndim is 3
     def plot_xinxout_3d(xin, xout, A, b):
         """
@@ -493,7 +515,6 @@ if __name__ == "__main__":
         parameters is 3.  
         
         """
-
 
         Ainv = la.inv(A)
     
@@ -545,7 +566,7 @@ if __name__ == "__main__":
 
 
     # Compute the first partition
-    xin, xout, vol, A, b, avec = get_outliers(xarray)
+    xin, xout, bool_Iin, vol, A, b, avec = get_outliers(xarray)
     
     fig = plot_xinxout_3d(xin, xout, A, b)
     fig.show()
