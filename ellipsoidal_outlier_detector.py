@@ -22,7 +22,10 @@ from cvxopt import blas, lapack, sqrt, mul, cos, sin, log
 EPS = sp.finfo(float).eps
 
 
-# Class definition for the El
+
+
+
+## Class definition for the El
 class EllipsoidSolver(object):
     """
     Class for constructing a function to pass to the convex 
@@ -496,6 +499,36 @@ def get_total_partition(xarray, alpha=0.5, EllipsoidSolver=EllipsoidSolver):
     return bool_Iin_list, bool_Iout_list, vols, As, bs
 
 
+## Define a function for filtering points with a given ellipse
+def get_filter_index(xarray_new, A, b):
+    """
+    Return an index array for selecting the point which are inside
+    the ellipse defined by (A, b).
+    
+    in 
+    --
+    xarray_new    - (M', ndim)
+    A             - (ndim, ndim)
+    b             - (ndim,)
+    
+    out
+    ---
+    bool_In       - (M',) Index array for selecing points in the ellipse
+
+    
+    * usage *
+    ---------
+    xarray[bool_Iin, :]     --->    gives the points inside the ellipse 
+
+
+    """
+
+    # Get the points in the ellipse
+    v = sp.dot(xarray_new, A) + b     # v~(M', ndim)
+    bool_Iin_new = sp.einsum('ij,ij->i', v, v) <= 1.0
+
+    # Return the boolean index.  USAGE: `xarray_new[bool_Iin_new, :]`
+    return bool_Iin_new
 
     
 
