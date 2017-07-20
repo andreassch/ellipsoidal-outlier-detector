@@ -373,10 +373,10 @@ class EllipsoidSolver(object):
 ## Do a single outlier detection step
 def get_outliers(xarray, avec0=None, EllipsoidSolver=EllipsoidSolver):
     """
-    Compute the outliers and split them off
-  
-    Compute outliers in sequance for all points.
-    
+    Compute the outliers and split them off.  This routine finds the minimum 
+    volume ellipsoid that contains all points.  Finds parameters for a 
+    single filter step. 
+
     in
     --
     xarray   - array shaped (M, d) for M samples of d-dimensional vecs
